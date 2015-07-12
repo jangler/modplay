@@ -11,12 +11,13 @@
 
 // flags/args
 char *arg_filename;
-float volume = 1.0f;
+float volume = 1.0f, fadeout = 0.0f;
 int channels = 2, loops = 1;
 
 // callback_data contains information needed in the rendering callback.
 typedef struct {
 	float delta;
+	int sample_rate;
 	DUH_SIGRENDERER *sr;
 } callback_data;
 
@@ -27,6 +28,7 @@ void usage(char *argv0, int status) {
 	fprintf(stderr, "Options:\n");
 	char *options[] = {
 		"  -c, --channels=2           1 or 2 for mono or stereo",
+		"  -f, --fadeout=0.0          post-loop fadeout in seconds",
 		"  -i, --interpolation=cubic  none, linear, or cubic",
 		"  -l, --loops=1              number of loops to play",
 		"  -v, --volume=1.0           playback volume factor",
@@ -51,6 +53,13 @@ void parse_args(int argc, char *argv[]) {
 			channels = atoi(argv[i]);
 			if (channels != 1 && channels != 2)
 				usage(argv[0], 1);
+		} else if (strcmp(argv[i], "-f") == 0 ||
+				strcmp(argv[i], "--fadeout") == 0) {
+			if (++i >= argc)
+				usage(argv[0], 1);
+			fadeout = atof(argv[i]);
+			if (fadeout < 0)
+				usage(argv[0], 1);
 		} else if (strcmp(argv[i], "-i") == 0 ||
 				strcmp(argv[i], "--interpolation") == 0) {
 			if (++i >= argc)
@@ -74,7 +83,7 @@ void parse_args(int argc, char *argv[]) {
 			if (++i >= argc)
 				usage(argv[0], 1);
 			volume = atof(argv[i]);
-			if (volume < 0)
+			if (volume <= 0)
 				usage(argv[0], 1);
 		} else if (strcmp(argv[i], "-h") == 0 ||
 				strcmp(argv[i], "--help") == 0) {
@@ -137,14 +146,22 @@ int callback(const void *input, void *output, unsigned long frames,
 	(void) input, (void) time_info, (void) flags; // prevent warnings
 	callback_data *cd = (callback_data*) user_data;
 	long n = duh_render(cd->sr, 16, 0, volume, cd->delta, frames, output);
-	if ((unsigned long) n < frames)
+	if (loops == 0) {
+		if (fadeout)
+			volume -= (float)frames / cd->sample_rate / fadeout;
+		else
+			volume = 0;
+	}
+	if (volume <= 0 || (unsigned long) n < frames)
 		return paComplete;
 	return paContinue;
 }
 
+// loop_callback decrements the loop counter whenever the song loops.
 int loop_callback(void *data) {
 	(void) data; // prevent warning
-	return (--loops == 0);
+	--loops;
+	return 0;
 }
 
 int main(int argc, char *argv[]) {
@@ -177,7 +194,8 @@ int main(int argc, char *argv[]) {
 		die("%s: could not get default output device\n", argv[0]);
 	callback_data cd;
 	const PaDeviceInfo *dev = Pa_GetDeviceInfo(index);
-	cd.delta = 65536.0f / dev->defaultSampleRate;
+	cd.sample_rate = dev->defaultSampleRate;
+	cd.delta = 65536.0f / cd.sample_rate;
 
 	// open and start output stream
 	PaStream *stream;
