@@ -16,12 +16,20 @@ Usage
 -----
 
 ```
-Usage: modplay <file>
+Usage: modplay [<option> ...] <file>
+
+Play an IT/XM/S3M/MOD file.
+
+Options:
+  -c, --channels=2  1 or 2 for mono or stereo
+  -v, --volume=1.0  playback volume factor
+  -h, --help        print this message and exit
+      --version     print version and exit
 ```
 
 To-do
 -----
 
 -	Terminate automatically if end of module is reached
--	Provide flags for mono/stereo, resampling algorithm, volume, loop
+-	Provide flags for resampling algorithm, loop
 -	Write man page
