@@ -1,5 +1,7 @@
+#include <fcntl.h>
 #include <stdarg.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 #include <dumb.h>
 #include <portaudio.h>
@@ -68,8 +70,15 @@ int main(int argc, char *argv[]) {
 	if (!duh)
 		die("%s: could not load module: %s\n", argv[0], argv[1]);
 
-	// init portaudio
+	// init portaudio, redirecting stderr output temporarily; a lot of
+	// junk gets printed otherwise. this won't work on windows, but who
+	// cares?
+	int old_stderr = dup(2), new_stderr = open("/dev/null", O_WRONLY);
+	dup2(new_stderr, 2);
 	PaError err = Pa_Initialize();
+	close(new_stderr);
+	dup2(old_stderr, 2);
+	close(old_stderr);
 	if (err != paNoError)
 		die("%s: could not init PortAudio: %s\n", argv[0],
 				Pa_GetErrorText(err));
