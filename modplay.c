@@ -20,24 +20,22 @@ struct callback_data {
 	DUH_SIGRENDERER *sr;
 };
 
-// die prints a message to stderr and exits with nonzero status.
-void die(const char *fmt, ...) {
-	va_list ap;
-	va_start(ap, fmt);
-	vfprintf(stderr, fmt, ap);
-	va_end(ap);
-	exit(1);
-}
-
 // usage prints usage information to stderr and exits with the given status.
 void usage(char *argv0, int status) {
 	fprintf(stderr, "Usage: %s [<option> ...] <file>\n\n", argv0);
 	fprintf(stderr, "Play an IT/XM/S3M/MOD file.\n\n");
 	fprintf(stderr, "Options:\n");
-	fprintf(stderr, "  -c, --channels=2  1 or 2 for mono or stereo\n");
-	fprintf(stderr, "  -v, --volume=1.0  playback volume factor\n");
-	fprintf(stderr, "  -h, --help        print this message and exit\n");
-	fprintf(stderr, "      --version     print version and exit\n");
+	char *options[] = {
+		"  -c, --channels=2           1 or 2 for mono or stereo",
+		"  -i, --interpolation=cubic  none, linear, or cubic",
+		"  -v, --volume=1.0           playback volume factor",
+		"  -h, --help                 print this message and exit",
+		"      --version              print version and exit",
+		NULL,
+	};
+	int i = 0;
+	while (options[i])
+		fprintf(stderr, "%s\n", options[i++]);
 	exit(status);
 }
 
@@ -51,6 +49,19 @@ void parse_args(int argc, char *argv[]) {
 				usage(argv[0], 1);
 			channels = atoi(argv[i]);
 			if (channels != 1 && channels != 2)
+				usage(argv[0], 1);
+		} else if (strcmp(argv[i], "-i") == 0 ||
+				strcmp(argv[i], "--interpolation") == 0) {
+			if (++i >= argc)
+				usage(argv[0], 1);
+
+			if (strcmp(argv[i], "none") == 0)
+				dumb_resampling_quality = DUMB_RQ_ALIASING;
+			else if (strcmp(argv[i], "linear") == 0)
+				dumb_resampling_quality = DUMB_RQ_LINEAR;
+			else if (strcmp(argv[i], "cubic") == 0)
+				dumb_resampling_quality = DUMB_RQ_CUBIC;
+			else
 				usage(argv[0], 1);
 		} else if (strcmp(argv[i], "-v") == 0 ||
 				strcmp(argv[i], "--volume") == 0) {
@@ -66,6 +77,7 @@ void parse_args(int argc, char *argv[]) {
 			printf("%s version %s\n", argv[0], VERSION);
 			exit(1);
 		} else if (strcmp(argv[i], "--") == 0) {
+			// stop parsing flags
 			if (++i == argc - 1) {
 				arg_filename = argv[i];
 				return;
@@ -82,7 +94,7 @@ void parse_args(int argc, char *argv[]) {
 	}
 
 	if (!arg_filename) {
-		usage(argv[0], 1); // no file
+		usage(argv[0], 1);
 	}
 }
 
@@ -98,6 +110,20 @@ DUH *dumb_load(const char *filename) {
 	return duh;
 }
 
+// die prints a message to stderr and exits with nonzero status.
+void die(const char *fmt, ...) {
+	va_list ap;
+	va_start(ap, fmt);
+	vfprintf(stderr, fmt, ap);
+	va_end(ap);
+	exit(1);
+}
+
+// pa_terminate wraps Pa_Terminate for use with atexit().
+void pa_terminate() {
+	Pa_Terminate();
+}
+
 // callback is the portaudio rendering callback.
 int callback(const void *input, void *output, unsigned long frames,
 		const PaStreamCallbackTimeInfo *time_info,
@@ -106,11 +132,6 @@ int callback(const void *input, void *output, unsigned long frames,
 	struct callback_data *cd = (struct callback_data *) user_data;
 	duh_render(cd->sr, 16, 0, volume, cd->delta, frames, output);
 	return 0;
-}
-
-// pa_terminate wraps Pa_Terminate for use with atexit().
-void pa_terminate() {
-	Pa_Terminate();
 }
 
 int main(int argc, char *argv[]) {
