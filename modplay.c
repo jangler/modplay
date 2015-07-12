@@ -4,11 +4,15 @@
 #include <dumb.h>
 #include <portaudio.h>
 
-#define SAMPLE_RATE (44100)
+// these defaults should be configurable via command-line arguments
+int n_channels = 2;
+float volume = 1.0f;
 
-const int delta = 65536.0f / SAMPLE_RATE;
-
-int n_channels = 2; // stereo
+// callback_data contains information needed in the rendering callback.
+struct callback_data {
+	float delta;
+	DUH_SIGRENDERER *sr;
+};
 
 // die prints a message to stderr and exits with nonzero status.
 void die(const char *fmt, ...) {
@@ -37,18 +41,19 @@ DUH *dumb_load(const char *filename) {
 	return duh;
 }
 
+// callback is the portaudio rendering callback.
 int callback(const void *input, void *output, unsigned long frames,
 		const PaStreamCallbackTimeInfo *time_info,
 		PaStreamCallbackFlags flags, void *user_data) {
 	(void) input, (void) time_info, (void) flags; // prevent warnings
-	DUH_SIGRENDERER *sr = (DUH_SIGRENDERER*) user_data;
-	duh_render(sr, 16, 1, 1.0f, delta, frames, output);
+	struct callback_data *cd = (struct callback_data *) user_data;
+	duh_render(cd->sr, 16, 0, volume, cd->delta, frames, output);
 	return 0;
 }
 
 // pa_terminate wraps Pa_Terminate for use with atexit().
 void pa_terminate() {
-
+	Pa_Terminate();
 }
 
 int main(int argc, char *argv[]) {
@@ -70,25 +75,39 @@ int main(int argc, char *argv[]) {
 				Pa_GetErrorText(err));
 	atexit(&pa_terminate);
 
+	// get default device info
+	PaDeviceIndex index = Pa_GetDefaultOutputDevice();
+	if (index == paNoDevice)
+		die("%s: could not get default output device\n", argv[0]);
+	struct callback_data cd;
+	const PaDeviceInfo *dev = Pa_GetDeviceInfo(index);
+	cd.delta = 65536.0f / dev->defaultSampleRate;
+
 	// open and start output stream
 	PaStream *stream;
-	DUH_SIGRENDERER *sr = duh_start_sigrenderer(duh, 0, n_channels, 0);
-	err = Pa_OpenDefaultStream(&stream, 0, n_channels, paInt16, SAMPLE_RATE,
-			paFramesPerBufferUnspecified, callback, sr);
+	cd.sr = duh_start_sigrenderer(duh, 0, n_channels, 0);
+	err = Pa_OpenDefaultStream(&stream, 0, n_channels, paInt16,
+			dev->defaultSampleRate, paFramesPerBufferUnspecified,
+			callback, &cd);
 	if (err != paNoError) {
-		duh_end_sigrenderer(sr);
+		duh_end_sigrenderer(cd.sr);
 		die("%s: could not open default stream: %s\n", argv[0],
 				Pa_GetErrorText(err));
 	}
 	if ((err = Pa_StartStream(stream)) != paNoError) {
-		duh_end_sigrenderer(sr);
+		duh_end_sigrenderer(cd.sr);
 		die("%s: could not start stream: %s\n", argv[0],
 				Pa_GetErrorText(err));
 	}
 
+	// play
+	while (Pa_IsStreamActive(stream) == 1) {
+		Pa_Sleep(100);
+	}
+
 	// clean up
 	Pa_CloseStream(stream);
-	duh_end_sigrenderer(sr);
+	duh_end_sigrenderer(cd.sr);
 
 	return 0;
 }
