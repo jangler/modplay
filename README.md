@@ -25,3 +25,4 @@ To-do
 -	Suppress PortAudio output when opening default device
 -	Terminate automatically if end of module is reached
 -	Provide flags for mono/stereo, resampling algorithm, volume, loop
+-	Write man page
