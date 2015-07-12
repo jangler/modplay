@@ -100,11 +100,13 @@ int main(int argc, char *argv[]) {
 			callback, &cd);
 	if (err != paNoError) {
 		duh_end_sigrenderer(cd.sr);
+		unload_duh(duh);
 		die("%s: could not open default stream: %s\n", argv[0],
 				Pa_GetErrorText(err));
 	}
 	if ((err = Pa_StartStream(stream)) != paNoError) {
 		duh_end_sigrenderer(cd.sr);
+		unload_duh(duh);
 		die("%s: could not start stream: %s\n", argv[0],
 				Pa_GetErrorText(err));
 	}
@@ -117,6 +119,7 @@ int main(int argc, char *argv[]) {
 	// clean up
 	Pa_CloseStream(stream);
 	duh_end_sigrenderer(cd.sr);
+	unload_duh(duh);
 
 	return 0;
 }
