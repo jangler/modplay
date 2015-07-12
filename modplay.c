@@ -7,7 +7,7 @@
 #include <dumb.h>
 #include <portaudio.h>
 
-#define VERSION "0.0.0"
+#define VERSION "1.0.0"
 
 // flags/args
 char *arg_filename;
@@ -23,7 +23,7 @@ typedef struct {
 
 // usage prints usage information to stderr and exits with the given status.
 void usage(char *argv0, int status) {
-	fprintf(stderr, "Usage: %s [<option> ...] <file>\n\n", argv0);
+	fprintf(stderr, "Usage: %s [OPTION]... FILE\n\n", argv0);
 	fprintf(stderr, "Play an IT/XM/S3M/MOD file.\n\n");
 	fprintf(stderr, "Options:\n");
 	char *options[] = {

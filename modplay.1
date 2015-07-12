@@ -1,0 +1,48 @@
+.TH MODPLAY 1 2015-07-12 "modplay 1.0.0"
+.SH NAME
+modplay \- play an IT/XM/S3M/MOD file
+.SH SYNOPSIS
+.B modplay
+[\fIOPTION\fR]... \fIFILE
+.SH DESCRIPTION
+.P
+Play an IT, XM, S3M, or MOD file. By default, play the module once through and
+stop when the module would begin to loop or when the speed is set to zero (for
+XM and MOD files).
+.SH OPTIONS
+.TP
+\fB\-c\fR, \fB\-\-channels\fR=\fICHANNELS
+set number of channels; 1 for mono or 2 for stereo (default: 2)
+.TP
+\fB\-f\fR, \fB\-\-fadeout\fR=\fISECONDS
+set length of post-loop fadeout in seconds (default: 0.0)
+.TP
+\fB\-i\fR, \fB\-\-interpolation\fR=\fIALGORITHM
+set resampling algorithm to none, linear, or cubic (default: cubic)
+.TP
+\fB\-l\fR, \fB\-\-loops\fR=\fILOOPS
+set number of loops to play; -1 loops indefinitely (default: 1)
+.TP
+\fB\-v\fR, \fB\-\-volume\fR=\fIFACTOR
+set playback volume factor (default: 1.0)
+.TP
+\fB\-h\fR, \fB\-\-help
+print usage information and exit
+.TP
+\fB\-\-version
+print version information and exit
+.SH EXIT STATUS
+.TP
+0
+if OK,
+.TP
+1
+if invocation invalid or fatal error encountered.
+.SH BUGS
+.P
+S3M files that use AdLib samples cannot be loaded due to a limitation in DUMB.
+.P
+Please use https://github.com/jangler/modplay/issues to report other problems.
+.SH EXAMPLE
+.P
+modplay -i linear -l 2 -f 10 01_fossfuture.it

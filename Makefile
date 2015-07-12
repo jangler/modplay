@@ -14,7 +14,7 @@ clean:
 
 install: $(OBJS)
 	install -Dm 755 $(OBJ_NAME) $(INSTALL_DIR)/bin
-#install -Dm 644 modplay.1 $(INSTALL_DIR)/man/man1
+	install -Dm 644 modplay.1 $(INSTALL_DIR)/man/man1
 
 uninstall:
-	rm -f $(INSTALL_DIR)/bin/$(OBJ_NAME) #$(INSTALL_DIR)/man/man1/modplay.1
+	rm -f $(INSTALL_DIR)/bin/$(OBJ_NAME) $(INSTALL_DIR)/man/man1/modplay.1
