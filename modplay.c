@@ -7,18 +7,18 @@
 #include <dumb.h>
 #include <portaudio.h>
 
-#define VERSION ("0.0.0")
+#define VERSION "0.0.0"
 
 // flags/args
 char *arg_filename;
 float volume = 1.0f;
-int channels = 2;
+int channels = 2, loops = 1;
 
 // callback_data contains information needed in the rendering callback.
-struct callback_data {
+typedef struct {
 	float delta;
 	DUH_SIGRENDERER *sr;
-};
+} callback_data;
 
 // usage prints usage information to stderr and exits with the given status.
 void usage(char *argv0, int status) {
@@ -28,6 +28,7 @@ void usage(char *argv0, int status) {
 	char *options[] = {
 		"  -c, --channels=2           1 or 2 for mono or stereo",
 		"  -i, --interpolation=cubic  none, linear, or cubic",
+		"  -l, --loops=1              number of loops to play",
 		"  -v, --volume=1.0           playback volume factor",
 		"  -h, --help                 print this message and exit",
 		"      --version              print version and exit",
@@ -63,6 +64,11 @@ void parse_args(int argc, char *argv[]) {
 				dumb_resampling_quality = DUMB_RQ_CUBIC;
 			else
 				usage(argv[0], 1);
+		} else if (strcmp(argv[i], "-l") == 0 ||
+				strcmp(argv[i], "--loops") == 0) {
+			if (++i >= argc)
+				usage(argv[0], 1);
+			loops = atoi(argv[i]);
 		} else if (strcmp(argv[i], "-v") == 0 ||
 				strcmp(argv[i], "--volume") == 0) {
 			if (++i >= argc)
@@ -129,9 +135,16 @@ int callback(const void *input, void *output, unsigned long frames,
 		const PaStreamCallbackTimeInfo *time_info,
 		PaStreamCallbackFlags flags, void *user_data) {
 	(void) input, (void) time_info, (void) flags; // prevent warnings
-	struct callback_data *cd = (struct callback_data *) user_data;
-	duh_render(cd->sr, 16, 0, volume, cd->delta, frames, output);
-	return 0;
+	callback_data *cd = (callback_data*) user_data;
+	long n = duh_render(cd->sr, 16, 0, volume, cd->delta, frames, output);
+	if ((unsigned long) n < frames)
+		return paComplete;
+	return paContinue;
+}
+
+int loop_callback(void *data) {
+	(void) data; // prevent warning
+	return (--loops == 0);
 }
 
 int main(int argc, char *argv[]) {
@@ -162,7 +175,7 @@ int main(int argc, char *argv[]) {
 	PaDeviceIndex index = Pa_GetDefaultOutputDevice();
 	if (index == paNoDevice)
 		die("%s: could not get default output device\n", argv[0]);
-	struct callback_data cd;
+	callback_data cd;
 	const PaDeviceInfo *dev = Pa_GetDeviceInfo(index);
 	cd.delta = 65536.0f / dev->defaultSampleRate;
 
@@ -185,10 +198,15 @@ int main(int argc, char *argv[]) {
 				Pa_GetErrorText(err));
 	}
 
+	// set terminate callbacks
+	DUMB_IT_SIGRENDERER *itsr = duh_get_it_sigrenderer(cd.sr);
+	dumb_it_set_loop_callback(itsr, &loop_callback, NULL);
+	dumb_it_set_xm_speed_zero_callback(itsr,
+			&dumb_it_callback_terminate, NULL);
+
 	// play
-	while (Pa_IsStreamActive(stream) == 1) {
+	while (Pa_IsStreamActive(stream) == 1)
 		Pa_Sleep(100);
-	}
 
 	// clean up
 	Pa_CloseStream(stream);

@@ -23,6 +23,7 @@ Play an IT/XM/S3M/MOD file.
 Options:
   -c, --channels=2           1 or 2 for mono or stereo
   -i, --interpolation=cubic  none, linear, or cubic
+  -l, --loops=1              number of loops to play
   -v, --volume=1.0           playback volume factor
   -h, --help                 print this message and exit
       --version              print version and exit
@@ -31,6 +32,5 @@ Options:
 To-do
 -----
 
--	Terminate automatically if end of module is reached
--	Provide flags for loop, fadeout
+-	Provide flag fadeout
 -	Write man page
