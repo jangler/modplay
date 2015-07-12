@@ -88,19 +88,13 @@ void parse_args(int argc, char *argv[]) {
 
 // dumb_load loads a module from the given filename or returns NULL.
 DUH *dumb_load(const char *filename) {
-	DUMBFILE *df = dumbfile_open(filename);
-	if (!df)
-		return NULL;
-
-	DUH *duh = dumb_read_it_quick(df);
+	DUH *duh = dumb_load_it_quick(filename);
 	if (!duh)
-		duh = dumb_read_xm_quick(df);
+		duh = dumb_load_xm_quick(filename);
 	if (!duh)
-		duh = dumb_read_s3m_quick(df);
+		duh = dumb_load_s3m_quick(filename);
 	if (!duh)
-		duh = dumb_read_mod_quick(df);
-	dumbfile_close(df);
-
+		duh = dumb_load_mod_quick(filename);
 	return duh;
 }
 
