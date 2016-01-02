@@ -10,7 +10,7 @@
 #include <portaudio.h>
 
 #define SAMPLE_RATE 44100
-#define VERSION "1.1.0"
+#define VERSION "1.1.1"
 
 // flags/args
 char *argv0, *arg_filename, *output_filename;
