@@ -1,5 +1,7 @@
+#include <errno.h>
 #include <fcntl.h>
 #include <stdarg.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -7,10 +9,11 @@
 #include <dumb.h>
 #include <portaudio.h>
 
-#define VERSION "1.0.0"
+#define SAMPLE_RATE 44100
+#define VERSION "1.1.0"
 
 // flags/args
-char *arg_filename;
+char *argv0, *arg_filename, *output_filename;
 float volume = 1.0f, fadeout = 0.0f;
 int channels = 2, loops = 1;
 
@@ -21,8 +24,20 @@ typedef struct {
 	DUH_SIGRENDERER *sr;
 } callback_data;
 
+typedef struct {
+	char riff_id[4];
+	unsigned int riff_size;
+	char wave_id[4], fmt_id[4];
+	unsigned int fmt_size;
+	unsigned short format_tag, channels;
+	unsigned int samples_per_second, bytes_per_second;
+	unsigned short block_align, bits_per_sample;
+	char data_id[4];
+	unsigned int data_size;
+} wav_header;
+
 // usage prints usage information to stderr and exits with the given status.
-void usage(char *argv0, int status) {
+void usage(int status) {
 	fprintf(stderr, "Usage: %s [OPTION]... FILE\n\n", argv0);
 	fprintf(stderr, "Play an IT/XM/S3M/MOD file.\n\n");
 	fprintf(stderr, "Options:\n");
@@ -31,6 +46,7 @@ void usage(char *argv0, int status) {
 		"  -f, --fadeout=0.0          post-loop fadeout in seconds",
 		"  -i, --interpolation=cubic  none, linear, or cubic",
 		"  -l, --loops=1              number of loops to play",
+		"  -o, --output=FILE          render to WAV file instead",
 		"  -v, --volume=1.0           playback volume factor",
 		"  -h, --help                 print this message and exit",
 		"      --version              print version and exit",
@@ -49,21 +65,21 @@ void parse_args(int argc, char *argv[]) {
 		if (strcmp(argv[i], "-c") == 0 ||
 				strcmp(argv[i], "--channels") == 0) {
 			if (++i >= argc)
-				usage(argv[0], 1);
+				usage(2);
 			channels = atoi(argv[i]);
 			if (channels != 1 && channels != 2)
-				usage(argv[0], 1);
+				usage(2);
 		} else if (strcmp(argv[i], "-f") == 0 ||
 				strcmp(argv[i], "--fadeout") == 0) {
 			if (++i >= argc)
-				usage(argv[0], 1);
+				usage(2);
 			fadeout = atof(argv[i]);
 			if (fadeout < 0)
-				usage(argv[0], 1);
+				usage(2);
 		} else if (strcmp(argv[i], "-i") == 0 ||
 				strcmp(argv[i], "--interpolation") == 0) {
 			if (++i >= argc)
-				usage(argv[0], 1);
+				usage(2);
 
 			if (strcmp(argv[i], "none") == 0)
 				dumb_resampling_quality = DUMB_RQ_ALIASING;
@@ -72,44 +88,49 @@ void parse_args(int argc, char *argv[]) {
 			else if (strcmp(argv[i], "cubic") == 0)
 				dumb_resampling_quality = DUMB_RQ_CUBIC;
 			else
-				usage(argv[0], 1);
+				usage(2);
 		} else if (strcmp(argv[i], "-l") == 0 ||
 				strcmp(argv[i], "--loops") == 0) {
 			if (++i >= argc)
-				usage(argv[0], 1);
+				usage(2);
 			loops = atoi(argv[i]);
+		} else if (strcmp(argv[i], "-o") == 0 ||
+				strcmp(argv[i], "--output") == 0) {
+			if (++i >= argc)
+				usage(2);
+			output_filename = argv[i];
 		} else if (strcmp(argv[i], "-v") == 0 ||
 				strcmp(argv[i], "--volume") == 0) {
 			if (++i >= argc)
-				usage(argv[0], 1);
+				usage(2);
 			volume = atof(argv[i]);
 			if (volume <= 0)
-				usage(argv[0], 1);
+				usage(2);
 		} else if (strcmp(argv[i], "-h") == 0 ||
 				strcmp(argv[i], "--help") == 0) {
-			usage(argv[0], 0);
+			usage(0);
 		} else if (strcmp(argv[i], "--version") == 0) {
 			printf("%s version %s\n", argv[0], VERSION);
-			exit(1);
+			exit(0);
 		} else if (strcmp(argv[i], "--") == 0) {
 			// stop parsing flags
 			if (++i == argc - 1) {
 				arg_filename = argv[i];
 				return;
 			} else {
-				usage(argv[0], 1);
+				usage(2);
 			}
 		} else if (strncmp(argv[i], "-", 1) == 0) {
-			usage(argv[0], 1); // bad flag
+			usage(2); // bad flag
 		} else if (!arg_filename) {
 			arg_filename = argv[i];
 		} else {
-			usage(argv[0], 1); // too many files
+			usage(2); // too many files
 		}
 	}
 
 	if (!arg_filename) {
-		usage(argv[0], 1);
+		usage(2);
 	}
 }
 
@@ -129,6 +150,7 @@ DUH *dumb_load(const char *filename) {
 void die(const char *fmt, ...) {
 	va_list ap;
 	va_start(ap, fmt);
+	fprintf(stderr, "%s: ", argv0);
 	vfprintf(stderr, fmt, ap);
 	va_end(ap);
 	exit(1);
@@ -148,7 +170,7 @@ int callback(const void *input, void *output, unsigned long frames,
 	long n = duh_render(cd->sr, 16, 0, volume, cd->delta, frames, output);
 	if (loops == 0) {
 		if (fadeout)
-			volume -= (float)frames / cd->sample_rate / fadeout;
+			volume -= 0.5 * frames / cd->sample_rate / fadeout;
 		else
 			volume = 0;
 	}
@@ -164,34 +186,25 @@ int loop_callback(void *data) {
 	return 0;
 }
 
-int main(int argc, char *argv[]) {
-	parse_args(argc, argv);
-
-	// init dumb
-	dumb_register_stdfiles();
-	atexit(&dumb_exit);
-	DUH *duh = dumb_load(arg_filename);
-	if (!duh)
-		die("%s: could not load module: %s\n", argv[0], arg_filename);
-
-	// init portaudio, redirecting stderr output temporarily; a lot of
-	// junk gets printed otherwise. this won't work on windows, but who
-	// cares?
-	int old_stderr = dup(2), new_stderr = open("/dev/null", O_WRONLY);
+// play a module using portaudio.
+void play(DUH *duh) {
+	// init portaudio, redirecting stderr output temporarily; a lot of junk
+	// gets printed otherwise. this won't work on windows, but who cares?
+	int old_stderr = dup(2);
+	int new_stderr = open("/dev/null", O_WRONLY);
 	dup2(new_stderr, 2);
 	PaError err = Pa_Initialize();
 	close(new_stderr);
 	dup2(old_stderr, 2);
 	close(old_stderr);
 	if (err != paNoError)
-		die("%s: could not init PortAudio: %s\n", argv[0],
-				Pa_GetErrorText(err));
+		die("could not init PortAudio: %s\n", Pa_GetErrorText(err));
 	atexit(&pa_terminate);
 
 	// get default device info
 	PaDeviceIndex index = Pa_GetDefaultOutputDevice();
 	if (index == paNoDevice)
-		die("%s: could not get default output device\n", argv[0]);
+		die("could not get default output device\n");
 	callback_data cd;
 	const PaDeviceInfo *dev = Pa_GetDeviceInfo(index);
 	cd.sample_rate = dev->defaultSampleRate;
@@ -206,14 +219,13 @@ int main(int argc, char *argv[]) {
 	if (err != paNoError) {
 		duh_end_sigrenderer(cd.sr);
 		unload_duh(duh);
-		die("%s: could not open default stream: %s\n", argv[0],
+		die("could not open default stream: %s\n",
 				Pa_GetErrorText(err));
 	}
 	if ((err = Pa_StartStream(stream)) != paNoError) {
 		duh_end_sigrenderer(cd.sr);
 		unload_duh(duh);
-		die("%s: could not start stream: %s\n", argv[0],
-				Pa_GetErrorText(err));
+		die("could not start stream: %s\n", Pa_GetErrorText(err));
 	}
 
 	// set terminate callbacks
@@ -229,6 +241,122 @@ int main(int argc, char *argv[]) {
 	// clean up
 	Pa_CloseStream(stream);
 	duh_end_sigrenderer(cd.sr);
+}
+
+void write_wav_header(unsigned int num_bytes, FILE *file, DUH *duh) {
+	wav_header header = {
+		.riff_id            = "RIFF",
+		.riff_size          = 4 + 24 + 8 + num_bytes,
+		.wave_id            = "WAVE",
+		.fmt_id             = "fmt ",
+		.fmt_size           = 16,
+		.format_tag         = 1,
+		.channels           = channels,
+		.samples_per_second = SAMPLE_RATE,
+		.bytes_per_second   = SAMPLE_RATE * 16 * channels,
+		.block_align        = 16 * channels,
+		.bits_per_sample    = 8 * 2,
+		.data_id            = "data",
+		.data_size          = num_bytes,
+	};
+	size_t header_size = sizeof(wav_header);
+	if (fwrite(&header, header_size, 1, file) < 1) {
+		unload_duh(duh);
+		die("%s: %s\n", output_filename, strerror(errno));
+	}
+}
+
+// render a chunk of audio data to a WAV file.
+int render_chunk(callback_data *cd, long frames, short* buf, FILE* file) {
+	long n = duh_render(cd->sr, 16, 0, volume, cd->delta, frames, buf);
+	if (loops == 0) {
+		if (fadeout)
+			volume -= 0.5 * frames / cd->sample_rate / fadeout;
+		else
+			volume = 0;
+	}
+
+	if (file) {
+		long bytes = frames * channels;
+		if ((long) fwrite(buf, sizeof(short), bytes, file) < bytes) {
+			fprintf(stderr, "%s: %s\n", output_filename,
+					strerror(errno));
+			return 0;
+		}
+	}
+
+	if (volume <= 0 || n < frames)
+		return 0;
+	return 1;
+}
+
+// write a module to a file.
+void render(DUH *duh) {
+	// open output file
+	FILE *file = fopen(output_filename, "wb");
+	if (!file) {
+		unload_duh(duh);
+		die("%s: %s\n", output_filename, strerror(errno));
+	}
+
+	// init renderer
+	callback_data cd = {
+		.sample_rate = SAMPLE_RATE,
+		.delta = 65536.0f / SAMPLE_RATE,
+		.sr = duh_start_sigrenderer(duh, 0, channels, 0),
+	};
+	DUMB_IT_SIGRENDERER *itsr = duh_get_it_sigrenderer(cd.sr);
+	dumb_it_set_loop_callback(itsr, &loop_callback, NULL);
+	dumb_it_set_xm_speed_zero_callback(itsr, &dumb_it_callback_terminate,
+			NULL);
+	long frames = 512;
+	short buf[frames * channels];
+
+	// determine song length
+	unsigned int num_bytes;
+	int initial_loops = loops;
+	float initial_volume = volume;
+	while (render_chunk(&cd, frames, buf, NULL))
+		num_bytes += frames * channels * 2;
+
+	// reset variables
+	loops = initial_loops;
+	volume = initial_volume;
+	duh_end_sigrenderer(cd.sr);
+	cd.sr = duh_start_sigrenderer(duh, 0, channels, 0);
+	itsr = duh_get_it_sigrenderer(cd.sr);
+	dumb_it_set_loop_callback(itsr, &loop_callback, NULL);
+	dumb_it_set_xm_speed_zero_callback(itsr, &dumb_it_callback_terminate,
+			NULL);
+
+	// write file
+	write_wav_header(num_bytes, file, duh);
+	while (render_chunk(&cd, frames, buf, file));
+
+	// clean up
+	duh_end_sigrenderer(cd.sr);
+	if (fclose(file)) {
+		unload_duh(duh);
+		die("%s: %s\n", output_filename, strerror(errno));
+	}
+}
+
+int main(int argc, char *argv[]) {
+	argv0 = argv[0];
+	parse_args(argc, argv);
+
+	// init dumb
+	dumb_register_stdfiles();
+	atexit(&dumb_exit);
+	DUH *duh = dumb_load(arg_filename);
+	if (!duh)
+		die("could not load module: %s\n", arg_filename);
+
+	if (output_filename)
+		render(duh);
+	else
+		play(duh);
+
 	unload_duh(duh);
 
 	return 0;

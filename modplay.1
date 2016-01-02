@@ -1,4 +1,4 @@
-.TH MODPLAY 1 2015-07-12 "modplay 1.0.0"
+.TH MODPLAY 1 2015-07-12 "modplay 1.1.0"
 .SH NAME
 modplay \- play an IT/XM/S3M/MOD file
 .SH SYNOPSIS
@@ -23,6 +23,9 @@ set resampling algorithm to none, linear, or cubic (default: cubic)
 \fB\-l\fR, \fB\-\-loops\fR=\fILOOPS
 set number of loops to play; -1 loops indefinitely (default: 1)
 .TP
+\fB\-o\fR, \fB\-\-output\fR=\fIFILE
+render to WAV file instead of playing
+.TP
 \fB\-v\fR, \fB\-\-volume\fR=\fIFACTOR
 set playback volume factor (default: 1.0)
 .TP
@@ -37,7 +40,10 @@ print version information and exit
 if OK,
 .TP
 1
-if invocation invalid or fatal error encountered.
+if fatal error encountered,
+.TP
+2
+if invocation invalid.
 .SH BUGS
 .P
 S3M files that use AdLib samples cannot be loaded due to a limitation in DUMB.
