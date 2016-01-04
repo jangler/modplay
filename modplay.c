@@ -10,7 +10,7 @@
 #include <portaudio.h>
 
 #define SAMPLE_RATE 44100
-#define VERSION "1.1.1"
+#define VERSION "1.1.2"
 
 // flags/args
 char *argv0, *arg_filename, *output_filename;
@@ -182,7 +182,8 @@ int callback(const void *input, void *output, unsigned long frames,
 // loop_callback decrements the loop counter whenever the song loops.
 int loop_callback(void *data) {
 	(void) data; // prevent warning
-	--loops;
+	if (--loops <= 0 && !fadeout)
+		volume = 0;
 	return 0;
 }
 
@@ -259,15 +260,16 @@ void write_wav_header(unsigned int num_bytes, FILE *file, DUH *duh) {
 		.data_id            = "data",
 		.data_size          = num_bytes,
 	};
-	size_t header_size = sizeof(wav_header);
-	if (fwrite(&header, header_size, 1, file) < 1) {
+	fseek(file, 0, SEEK_SET);
+	if (fwrite(&header, sizeof(wav_header), 1, file) < 1) {
 		unload_duh(duh);
 		die("%s: %s\n", output_filename, strerror(errno));
 	}
 }
 
 // render a chunk of audio data to a WAV file.
-int render_chunk(callback_data *cd, long frames, short* buf, FILE* file) {
+int render_chunk(callback_data *cd, long frames, short *buf, FILE* file,
+		long *num_bytes) {
 	long n = duh_render(cd->sr, 16, 0, volume, cd->delta, frames, buf);
 	if (loops == 0) {
 		if (fadeout)
@@ -275,6 +277,7 @@ int render_chunk(callback_data *cd, long frames, short* buf, FILE* file) {
 		else
 			volume = 0;
 	}
+	*num_bytes += n * channels * 2;
 
 	if (file) {
 		long bytes = frames * channels;
@@ -312,26 +315,11 @@ void render(DUH *duh) {
 	long frames = 512;
 	short buf[frames * channels];
 
-	// determine song length
-	unsigned int num_bytes;
-	int initial_loops = loops;
-	float initial_volume = volume;
-	while (render_chunk(&cd, frames, buf, NULL))
-		num_bytes += frames * channels * 2;
-
-	// reset variables
-	loops = initial_loops;
-	volume = initial_volume;
-	duh_end_sigrenderer(cd.sr);
-	cd.sr = duh_start_sigrenderer(duh, 0, channels, 0);
-	itsr = duh_get_it_sigrenderer(cd.sr);
-	dumb_it_set_loop_callback(itsr, &loop_callback, NULL);
-	dumb_it_set_xm_speed_zero_callback(itsr, &dumb_it_callback_terminate,
-			NULL);
-
 	// write file
-	write_wav_header(num_bytes, file, duh);
-	while (render_chunk(&cd, frames, buf, file));
+	long num_bytes = 0;
+	write_wav_header(num_bytes, file, duh); // dummy header write
+	while (render_chunk(&cd, frames, buf, file, &num_bytes));
+	write_wav_header(num_bytes, file, duh); // real header write
 
 	// clean up
 	duh_end_sigrenderer(cd.sr);
