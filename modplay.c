@@ -10,11 +10,11 @@
 #include <portaudio.h>
 
 #define SAMPLE_RATE 44100
-#define VERSION "1.1.2"
+#define VERSION "1.1.3"
 
 // flags/args
 char *argv0, *arg_filename, *output_filename;
-float volume = 1.0f, fadeout = 0.0f;
+float initial_volume = 1.0f, volume = 1.0f, fadeout = 0.0f;
 int channels = 2, loops = 1;
 
 // callback_data contains information needed in the rendering callback.
@@ -103,7 +103,7 @@ void parse_args(int argc, char *argv[]) {
 				strcmp(argv[i], "--volume") == 0) {
 			if (++i >= argc)
 				usage(2);
-			volume = atof(argv[i]);
+			initial_volume = volume = atof(argv[i]);
 			if (volume <= 0)
 				usage(2);
 		} else if (strcmp(argv[i], "-h") == 0 ||
@@ -161,6 +161,14 @@ void pa_terminate() {
 	Pa_Terminate();
 }
 
+// fade the volume based on the given frame count and sample rate.
+void fade(int frames, int sample_rate) {
+	if (fadeout)
+		volume -= initial_volume * frames / sample_rate / fadeout;
+	else
+		volume = 0;
+}
+
 // callback is the portaudio rendering callback.
 int callback(const void *input, void *output, unsigned long frames,
 		const PaStreamCallbackTimeInfo *time_info,
@@ -168,12 +176,8 @@ int callback(const void *input, void *output, unsigned long frames,
 	(void) input, (void) time_info, (void) flags; // prevent warnings
 	callback_data *cd = (callback_data*) user_data;
 	long n = duh_render(cd->sr, 16, 0, volume, cd->delta, frames, output);
-	if (loops == 0) {
-		if (fadeout)
-			volume -= 0.5 * frames / cd->sample_rate / fadeout;
-		else
-			volume = 0;
-	}
+	if (loops <= 0)
+		fade(frames, cd->sample_rate);
 	if (volume <= 0 || (unsigned long) n < frames)
 		return paComplete;
 	return paContinue;
@@ -185,6 +189,13 @@ int loop_callback(void *data) {
 	if (--loops <= 0 && !fadeout)
 		volume = 0;
 	return 0;
+}
+
+void init_sigrenderer(DUH_SIGRENDERER *sr) {
+	DUMB_IT_SIGRENDERER *itsr = duh_get_it_sigrenderer(sr);
+	dumb_it_set_loop_callback(itsr, &loop_callback, NULL);
+	dumb_it_set_xm_speed_zero_callback(itsr, &dumb_it_callback_terminate,
+			NULL);
 }
 
 // play a module using portaudio.
@@ -229,11 +240,7 @@ void play(DUH *duh) {
 		die("could not start stream: %s\n", Pa_GetErrorText(err));
 	}
 
-	// set terminate callbacks
-	DUMB_IT_SIGRENDERER *itsr = duh_get_it_sigrenderer(cd.sr);
-	dumb_it_set_loop_callback(itsr, &loop_callback, NULL);
-	dumb_it_set_xm_speed_zero_callback(itsr,
-			&dumb_it_callback_terminate, NULL);
+	init_sigrenderer(cd.sr);
 
 	// play
 	while (Pa_IsStreamActive(stream) == 1)
@@ -267,16 +274,12 @@ void write_wav_header(unsigned int num_bytes, FILE *file, DUH *duh) {
 	}
 }
 
-// render a chunk of audio data to a WAV file.
+// render a chunk of audio data to a WAV file and return 0 iff done.
 int render_chunk(callback_data *cd, long frames, short *buf, FILE* file,
 		long *num_bytes) {
 	long n = duh_render(cd->sr, 16, 0, volume, cd->delta, frames, buf);
-	if (loops == 0) {
-		if (fadeout)
-			volume -= 0.5 * frames / cd->sample_rate / fadeout;
-		else
-			volume = 0;
-	}
+	if (loops <= 0)
+		fade(frames, cd -> sample_rate);
 	*num_bytes += n * channels * 2;
 
 	if (file) {
@@ -308,10 +311,7 @@ void render(DUH *duh) {
 		.delta = 65536.0f / SAMPLE_RATE,
 		.sr = duh_start_sigrenderer(duh, 0, channels, 0),
 	};
-	DUMB_IT_SIGRENDERER *itsr = duh_get_it_sigrenderer(cd.sr);
-	dumb_it_set_loop_callback(itsr, &loop_callback, NULL);
-	dumb_it_set_xm_speed_zero_callback(itsr, &dumb_it_callback_terminate,
-			NULL);
+	init_sigrenderer(cd.sr);
 	long frames = 512;
 	short buf[frames * channels];
 
