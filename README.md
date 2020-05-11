@@ -6,7 +6,7 @@ player based on [DUMB](http://dumb.sourceforge.net/index.php?page=about) and
 
 Installation
 ------------
-1. Install DUMB and PortAudio.
+1. Install DUMB 0.9.3 or 1.0.0 (**not** 2.0.x) and PortAudio.
 2. Edit the Makefile if you wish.
 3. Run `make && make install`.
 
