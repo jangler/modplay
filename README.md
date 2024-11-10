@@ -10,9 +10,6 @@ Installation
 2. Edit the Makefile if you wish.
 3. Run `make && make install`.
 
-If you use Arch Linux or a derivative, you may also install via the [AUR
-package](https://aur.archlinux.org/packages/modplay/).
-
 Usage
 -----
     Usage: modplay [OPTION]... FILE
