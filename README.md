@@ -4,6 +4,8 @@ A command-line [IT/XM/S3M/MOD](https://en.wikipedia.org/wiki/Module_file)
 player based on [DUMB](http://dumb.sourceforge.net/index.php?page=about) and
 [PortAudio](http://www.portaudio.com/).
 
+[openmpt123](https://lib.openmpt.org/libopenmpt/) is probably a better choice.
+
 Installation
 ------------
 1. Install DUMB 0.9.3 or 1.0.0 (**not** 2.0.x) and PortAudio.
